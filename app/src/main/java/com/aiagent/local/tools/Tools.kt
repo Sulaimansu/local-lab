@@ -16,17 +16,14 @@ data class ToolCallResult(
     val result: String
 )
 
-// Enum outside any function
-enum class TokenType { NUMBER, OPERATOR, LPAREN, RPAREN, EOF }
-
 object ToolImplementations {
 
     fun calculator(expression: String): String {
         return try {
             val sanitized = expression.replace(Regex("[^0-9+\\-*/.() ]"), "")
-            evaluateExpression(sanitized).toString()
+            evaluateSimple(sanitized).toString()
         } catch (e: Exception) {
-            "Error evaluating expression: ${e.message}"
+            "Error: ${e.message}"
         }
     }
 
@@ -44,81 +41,89 @@ object ToolImplementations {
         return "$level%"
     }
 
-    private fun evaluateExpression(expression: String): Double {
-        data class Token(val type: TokenType, val value: String)
+    // --- Simple expression evaluator (recursive descent) using top-level private functions ---
 
-        fun tokenize(expr: String): List<Token> {
-            val tokens = mutableListOf<Token>()
-            var i = 0
-            while (i < expr.length) {
-                when {
-                    expr[i].isDigit() || expr[i] == '.' -> {
-                        val start = i
-                        while (i < expr.length && (expr[i].isDigit() || expr[i] == '.')) i++
-                        tokens.add(Token(TokenType.NUMBER, expr.substring(start, i)))
-                        continue
-                    }
-                    expr[i] in "+-*/" -> tokens.add(Token(TokenType.OPERATOR, expr[i].toString()))
-                    expr[i] == '(' -> tokens.add(Token(TokenType.LPAREN, "("))
-                    expr[i] == ')' -> tokens.add(Token(TokenType.RPAREN, ")"))
+    private data class Token(val type: TokenType, val value: String)
+
+    private enum class TokenType { NUMBER, OP, LPAR, RPAR, EOF }
+
+    private fun tokenize(expr: String): List<Token> {
+        val tokens = mutableListOf<Token>()
+        var i = 0
+        while (i < expr.length) {
+            val c = expr[i]
+            when {
+                c.isDigit() || c == '.' -> {
+                    val start = i
+                    while (i < expr.length && (expr[i].isDigit() || expr[i] == '.')) i++
+                    tokens.add(Token(TokenType.NUMBER, expr.substring(start, i)))
+                    continue
                 }
-                i++
+                c in "+-*/" -> tokens.add(Token(TokenType.OP, c.toString()))
+                c == '(' -> tokens.add(Token(TokenType.LPAR, "("))
+                c == ')' -> tokens.add(Token(TokenType.RPAR, ")"))
             }
-            tokens.add(Token(TokenType.EOF, ""))
-            return tokens
+            i++
         }
+        tokens.add(Token(TokenType.EOF, ""))
+        return tokens
+    }
 
+    private fun evaluateSimple(expression: String): Double {
         val tokens = tokenize(expression)
         var pos = 0
 
         fun current() = tokens[pos]
         fun advance() { pos++ }
 
-        fun parseExpression(): Double {
-            var result = parseTerm()
-            while (current().type == TokenType.OPERATOR && current().value in "+-") {
+        fun expr(): Double {
+            var result = term()
+            while (current().type == TokenType.OP && current().value in "+-") {
                 val op = current().value
                 advance()
-                val right = parseTerm()
+                val right = term()
                 result = if (op == "+") result + right else result - right
             }
             return result
         }
 
-        fun parseTerm(): Double {
-            var result = parseFactor()
-            while (current().type == TokenType.OPERATOR && current().value in "*/") {
+        fun term(): Double {
+            var result = factor()
+            while (current().type == TokenType.OP && current().value in "*/") {
                 val op = current().value
                 advance()
-                val right = parseFactor()
+                val right = factor()
                 result = if (op == "*") result * right else result / right
             }
             return result
         }
 
-        fun parseFactor(): Double {
+        fun factor(): Double {
             return when (current().type) {
                 TokenType.NUMBER -> {
-                    val value = current().value.toDouble()
+                    val v = current().value.toDouble()
                     advance()
-                    value
+                    v
                 }
-                TokenType.LPAREN -> {
+                TokenType.LPAR -> {
                     advance()
-                    val result = parseExpression()
+                    val v = expr()
+                    if (current().type != TokenType.RPAR) throw Exception("Missing ')")
                     advance()
-                    result
+                    v
                 }
-                TokenType.OPERATOR -> {
+                TokenType.OP -> {
                     if (current().value == "-") {
                         advance()
-                        -parseFactor()
-                    } else throw IllegalArgumentException("Unexpected operator")
+                        -factor()
+                    } else throw Exception("Unexpected operator")
                 }
-                else -> throw IllegalArgumentException("Unexpected token")
+                else -> throw Exception("Unexpected token")
             }
         }
 
-        return parseExpression()
+        val result = expr()
+        if (current().type != TokenType.EOF) throw Exception("Extra tokens")
+        return result
     }
 }
