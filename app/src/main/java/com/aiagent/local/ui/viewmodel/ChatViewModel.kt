@@ -9,11 +9,10 @@ import com.aiagent.local.data.InferenceSettings
 import com.aiagent.local.data.SettingsRepository
 import com.aiagent.local.inference.LlamaEngine
 import com.aiagent.local.inference.ModelManager
-import com.aiagent.local.tools.*
-import kotlinx.coroutines.Dispatchers
+import com.aiagent.local.tools.ToolExecutor
+import com.aiagent.local.tools.ToolRegistry
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -129,8 +128,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     val toolCall = toolRegistry.parseToolCall(jsonStr)
                     if (toolCall != null) {
                         _messages.value = _messages.value + ChatMessage.ToolCall(
-                            toolCall.tool,
-                            toolCall.args
+                            toolName = toolCall.tool,
+                            arguments = toolCall.args
                         )
 
                         val result = toolExecutor.execute(toolCall)

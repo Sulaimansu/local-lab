@@ -13,14 +13,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.aiagent.local.data.ChatMessage
 import com.aiagent.local.ui.components.ChatBubble
-import com.aiagent.local.ui.components.ModelPickerDialog
 import com.aiagent.local.ui.viewmodel.ChatViewModel
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,27 +31,14 @@ fun ChatScreen(
     val statusText by viewModel.statusText.collectAsState()
 
     var inputText by remember { mutableStateOf("") }
-    var showModelPicker by remember { mutableStateOf(false) }
-    var showEmbeddingPicker by remember { mutableStateOf(false) }
-
     val listState = rememberLazyListState()
-    val scope = rememberCoroutineScope()
 
-    // File picker for GGUF model
     val modelFilePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         uri?.let { viewModel.loadModelFromUri(it) }
     }
 
-    // File picker for embedding model
-    val embeddingFilePicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
-        uri?.let { viewModel.loadEmbeddingModelFromUri(it) }
-    }
-
-    // Scroll to bottom on new messages
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
             listState.animateScrollToItem(messages.size - 1)
@@ -85,13 +68,9 @@ fun ChatScreen(
             )
         },
         bottomBar = {
-            Surface(
-                tonalElevation = 3.dp
-            ) {
+            Surface(tonalElevation = 3.dp) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     TextField(
@@ -99,7 +78,7 @@ fun ChatScreen(
                         onValueChange = { inputText = it },
                         modifier = Modifier.weight(1f),
                         placeholder = { Text("Type a message...") },
-                        enabled = isModelLoaded && !isGenerating,
+                        readOnly = !isModelLoaded || isGenerating,
                         maxLines = 4
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -119,12 +98,7 @@ fun ChatScreen(
             }
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
-            // Status bar
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (statusText.isNotEmpty()) {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
@@ -138,45 +112,30 @@ fun ChatScreen(
                 }
             }
 
-            // Loading indicator
             if (!isModelLoaded) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            "No model loaded",
-                            style = MaterialTheme.typography.titleLarge
-                        )
+                        Text("No model loaded", style = MaterialTheme.typography.titleLarge)
                         Spacer(modifier = Modifier.height(16.dp))
                         Button(onClick = { modelFilePicker.launch(arrayOf("*/*")) }) {
                             Icon(Icons.Default.FolderOpen, null)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Select GGUF Model")
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            "Or load an embedding model for RAG:",
-                            style = MaterialTheme.typography.labelSmall
-                        )
-                        TextButton(onClick = { embeddingFilePicker.launch(arrayOf("*/*")) }) {
-                            Text("Load Embedding Model (MiniLM)")
-                        }
                     }
                 }
             }
 
-            // Chat messages
             LazyColumn(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
+                modifier = Modifier.weight(1f).fillMaxWidth(),
                 state = listState,
                 contentPadding = PaddingValues(8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                items(messages) { message ->
+                items(messages, key = { it.timestamp }) { message ->
                     when (message) {
                         is ChatMessage.User -> ChatBubble(
                             text = message.content,

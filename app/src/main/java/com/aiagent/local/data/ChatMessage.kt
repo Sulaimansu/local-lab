@@ -1,31 +1,31 @@
 package com.aiagent.local.data
 
-sealed class Message {
+sealed class ChatMessage {
     abstract val content: String
     abstract val timestamp: Long
 
     data class User(
         override val content: String,
         override val timestamp: Long = System.currentTimeMillis()
-    ) : Message()
+    ) : ChatMessage()
 
     data class Bot(
         override val content: String,
         override val timestamp: Long = System.currentTimeMillis(),
         val isStreaming: Boolean = false
-    ) : Message()
+    ) : ChatMessage()
 
     data class System(
         override val content: String,
         override val timestamp: Long = System.currentTimeMillis()
-    ) : Message()
+    ) : ChatMessage()
 
     data class ToolCall(
         val toolName: String,
         val arguments: Map<String, String>,
         val result: String? = null,
         override val timestamp: Long = System.currentTimeMillis()
-    ) : Message() {
+    ) : ChatMessage() {
         override val content: String
             get() = if (result != null) {
                 "Tool: $toolName\nResult: $result"
@@ -34,6 +34,3 @@ sealed class Message {
             }
     }
 }
-
-// Alias for backward compatibility (existing code uses ChatMessage)
-typealias ChatMessage = Message

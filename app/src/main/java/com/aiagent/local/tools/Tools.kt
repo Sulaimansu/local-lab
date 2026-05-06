@@ -1,17 +1,20 @@
 package com.aiagent.local.tools
 
-import kotlinx.serialization.Serializable
 import android.content.Context
+import kotlinx.serialization.Serializable
 
-sealed class TokenType {
-    object NUMBER : TokenType()
-    object OPERATOR : TokenType()
-    object LPAREN : TokenType()
-    object RPAREN : TokenType()
-    object EOF : TokenType()
-}
+@Serializable
+data class ToolCallRequest(
+    val tool: String,
+    val args: Map<String, String>
+)
 
-data class Token(val type: TokenType, val value: String)
+@Serializable
+data class ToolCallResult(
+    val tool: String,
+    val success: Boolean,
+    val result: String
+)
 
 object ToolImplementations {
 
@@ -39,6 +42,11 @@ object ToolImplementations {
     }
 
     private fun evaluateExpression(expression: String): Double {
+        // Simple recursive descent parser
+        data class Token(val type: Type, val value: String) {
+            enum class Type { NUMBER, OPERATOR, LPAREN, RPAREN, EOF }
+        }
+
         fun tokenize(expr: String): List<Token> {
             val tokens = mutableListOf<Token>()
             var i = 0
@@ -47,16 +55,16 @@ object ToolImplementations {
                     expr[i].isDigit() || expr[i] == '.' -> {
                         val start = i
                         while (i < expr.length && (expr[i].isDigit() || expr[i] == '.')) i++
-                        tokens.add(Token(TokenType.NUMBER, expr.substring(start, i)))
+                        tokens.add(Token(Token.Type.NUMBER, expr.substring(start, i)))
                         continue
                     }
-                    expr[i] in "+-*/" -> tokens.add(Token(TokenType.OPERATOR, expr[i].toString()))
-                    expr[i] == '(' -> tokens.add(Token(TokenType.LPAREN, "("))
-                    expr[i] == ')' -> tokens.add(Token(TokenType.RPAREN, ")"))
+                    expr[i] in "+-*/" -> tokens.add(Token(Token.Type.OPERATOR, expr[i].toString()))
+                    expr[i] == '(' -> tokens.add(Token(Token.Type.LPAREN, "("))
+                    expr[i] == ')' -> tokens.add(Token(Token.Type.RPAREN, ")"))
                 }
                 i++
             }
-            tokens.add(Token(TokenType.EOF, ""))
+            tokens.add(Token(Token.Type.EOF, ""))
             return tokens
         }
 
@@ -68,7 +76,7 @@ object ToolImplementations {
 
         fun parseExpression(): Double {
             var result = parseTerm()
-            while (current().type == TokenType.OPERATOR && current().value in "+-") {
+            while (current().type == Token.Type.OPERATOR && current().value in "+-") {
                 val op = current().value
                 advance()
                 val right = parseTerm()
@@ -79,7 +87,7 @@ object ToolImplementations {
 
         fun parseTerm(): Double {
             var result = parseFactor()
-            while (current().type == TokenType.OPERATOR && current().value in "*/") {
+            while (current().type == Token.Type.OPERATOR && current().value in "*/") {
                 val op = current().value
                 advance()
                 val right = parseFactor()
@@ -90,18 +98,18 @@ object ToolImplementations {
 
         fun parseFactor(): Double {
             return when (current().type) {
-                TokenType.NUMBER -> {
+                Token.Type.NUMBER -> {
                     val value = current().value.toDouble()
                     advance()
                     value
                 }
-                TokenType.LPAREN -> {
+                Token.Type.LPAREN -> {
                     advance()
                     val result = parseExpression()
                     advance()
                     result
                 }
-                TokenType.OPERATOR -> {
+                Token.Type.OPERATOR -> {
                     if (current().value == "-") {
                         advance()
                         -parseFactor()

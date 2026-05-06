@@ -4,12 +4,13 @@ import android.content.Context
 import io.aatricks.llmedge.LLMEdge
 import io.aatricks.llmedge.model.ModelSpec
 import io.aatricks.llmedge.text.TextGenerationRequest
+import io.aatricks.llmedge.text.TextStreamEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.transform
 import kotlinx.coroutines.withContext
 
 class LlamaEngine(private val context: Context, private val appScope: CoroutineScope) {
@@ -41,9 +42,17 @@ class LlamaEngine(private val context: Context, private val appScope: CoroutineS
             maxTokens = maxTokens,
         )
 
-        currentEdge.text.stream(request).collect { token ->
-            emit(token)
-        }
+        currentEdge.text.stream(request)
+            .transform { event ->
+                when (event) {
+                    is TextStreamEvent.Token -> emit(event.text)
+                    is TextStreamEvent.Error -> throw RuntimeException(event.message)
+                    else -> {} // ignore start/end events
+                }
+            }
+            .collect { token ->
+                emit(token)
+            }
     }.flowOn(Dispatchers.IO)
 
     suspend fun complete(

@@ -4,10 +4,6 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
-/**
- * Registry of available tools for the AI agent.
- * Tools are defined here and the LLM can call them.
- */
 class ToolRegistry {
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -15,7 +11,7 @@ class ToolRegistry {
     data class ToolDefinition(
         val name: String,
         val description: String,
-        val parameters: Map<String, String> // param name -> description
+        val parameters: Map<String, String>
     )
 
     private val tools = mutableMapOf<String, ToolDefinition>()
@@ -28,10 +24,6 @@ class ToolRegistry {
 
     fun getToolDefinitions(): List<ToolDefinition> = tools.values.toList()
 
-    /**
-     * Parse a JSON tool call response from the LLM.
-     * Expected format: {"tool": "name", "args": {"key": "value", ...}}
-     */
     fun parseToolCall(jsonString: String): ToolCallRequest? {
         return try {
             val obj = json.decodeFromString<JsonObject>(jsonString)
