@@ -1,7 +1,5 @@
 package com.aiagent.local.data
 
-import kotlinx.serialization.Serializable
-
 sealed class Message {
     abstract val content: String
     abstract val timestamp: Long
@@ -36,3 +34,6 @@ sealed class Message {
             }
     }
 }
+
+// Alias for backward compatibility (existing code uses ChatMessage)
+typealias ChatMessage = Message

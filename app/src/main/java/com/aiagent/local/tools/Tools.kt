@@ -1,43 +1,27 @@
 package com.aiagent.local.tools
 
 import kotlinx.serialization.Serializable
+import android.content.Context
 
-/**
- * Tool call definitions and results.
- */
-@Serializable
-data class ToolCallRequest(
-    val tool: String,
-    val args: Map<String, String>
-)
+sealed class TokenType {
+    object NUMBER : TokenType()
+    object OPERATOR : TokenType()
+    object LPAREN : TokenType()
+    object RPAREN : TokenType()
+    object EOF : TokenType()
+}
 
-@Serializable
-data class ToolCallResult(
-    val tool: String,
-    val success: Boolean,
-    val result: String
-)
+data class Token(val type: TokenType, val value: String)
 
-/**
- * Individual tool implementations.
- * Each tool returns a result string.
- */
 object ToolImplementations {
 
     fun calculator(expression: String): String {
         return try {
-            // Simple arithmetic evaluator (safe subset)
             val sanitized = expression.replace(Regex("[^0-9+\\-*/.() ]"), "")
-            val result = evaluateExpression(sanitized)
-            result.toString()
+            evaluateExpression(sanitized).toString()
         } catch (e: Exception) {
             "Error evaluating expression: ${e.message}"
         }
-    }
-
-    fun searchKnowledgeBase(query: String, retriever: suspend (String) -> String): String {
-        // retriever is a lambda passed from RAG module
-        return "search_knowledge_base called with: $query"
     }
 
     fun getCurrentTime(): String {
@@ -47,23 +31,14 @@ object ToolImplementations {
         ).format(java.util.Date())
     }
 
-    fun getBatteryLevel(context: android.content.Context): String {
-        val batteryManager = context.getSystemService(android.content.Context.BATTERY_SERVICE)
+    fun getBatteryLevel(context: Context): String {
+        val batteryManager = context.getSystemService(Context.BATTERY_SERVICE)
                 as android.os.BatteryManager
         val level = batteryManager.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
         return "$level%"
     }
 
-    /**
-     * Simple expression evaluator for basic arithmetic.
-     * Replace with exp4j or similar library for production use.
-     */
     private fun evaluateExpression(expression: String): Double {
-        // Tokenize and evaluate in a simple recursive descent parser
-        data class Token(val type: Type, val value: String) {
-            enum class Type { NUMBER, OPERATOR, LPAREN, RPAREN, EOF }
-        }
-
         fun tokenize(expr: String): List<Token> {
             val tokens = mutableListOf<Token>()
             var i = 0
@@ -72,16 +47,16 @@ object ToolImplementations {
                     expr[i].isDigit() || expr[i] == '.' -> {
                         val start = i
                         while (i < expr.length && (expr[i].isDigit() || expr[i] == '.')) i++
-                        tokens.add(Token(Token.Type.NUMBER, expr.substring(start, i)))
+                        tokens.add(Token(TokenType.NUMBER, expr.substring(start, i)))
                         continue
                     }
-                    expr[i] in "+-*/" -> tokens.add(Token(Token.Type.OPERATOR, expr[i].toString()))
-                    expr[i] == '(' -> tokens.add(Token(Token.Type.LPAREN, "("))
-                    expr[i] == ')' -> tokens.add(Token(Token.Type.RPAREN, ")"))
+                    expr[i] in "+-*/" -> tokens.add(Token(TokenType.OPERATOR, expr[i].toString()))
+                    expr[i] == '(' -> tokens.add(Token(TokenType.LPAREN, "("))
+                    expr[i] == ')' -> tokens.add(Token(TokenType.RPAREN, ")"))
                 }
                 i++
             }
-            tokens.add(Token(Token.Type.EOF, ""))
+            tokens.add(Token(TokenType.EOF, ""))
             return tokens
         }
 
@@ -93,8 +68,7 @@ object ToolImplementations {
 
         fun parseExpression(): Double {
             var result = parseTerm()
-            while (current().type == Token.Type.OPERATOR &&
-                current().value in "+-") {
+            while (current().type == TokenType.OPERATOR && current().value in "+-") {
                 val op = current().value
                 advance()
                 val right = parseTerm()
@@ -105,8 +79,7 @@ object ToolImplementations {
 
         fun parseTerm(): Double {
             var result = parseFactor()
-            while (current().type == Token.Type.OPERATOR &&
-                current().value in "*/") {
+            while (current().type == TokenType.OPERATOR && current().value in "*/") {
                 val op = current().value
                 advance()
                 val right = parseFactor()
@@ -117,24 +90,22 @@ object ToolImplementations {
 
         fun parseFactor(): Double {
             return when (current().type) {
-                Token.Type.NUMBER -> {
+                TokenType.NUMBER -> {
                     val value = current().value.toDouble()
                     advance()
                     value
                 }
-                Token.Type.LPAREN -> {
-                    advance() // skip (
+                TokenType.LPAREN -> {
+                    advance()
                     val result = parseExpression()
-                    advance() // skip )
+                    advance()
                     result
                 }
-                Token.Type.OPERATOR -> {
+                TokenType.OPERATOR -> {
                     if (current().value == "-") {
                         advance()
                         -parseFactor()
-                    } else {
-                        throw IllegalArgumentException("Unexpected operator")
-                    }
+                    } else throw IllegalArgumentException("Unexpected operator")
                 }
                 else -> throw IllegalArgumentException("Unexpected token")
             }
