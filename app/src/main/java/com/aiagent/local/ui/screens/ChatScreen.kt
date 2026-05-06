@@ -78,7 +78,7 @@ fun ChatScreen(
                         onValueChange = { inputText = it },
                         modifier = Modifier.weight(1f),
                         placeholder = { Text("Type a message...") },
-                        readOnly = !isModelLoaded || isGenerating,
+                        readOnly = !isModelLoaded || isGenerating,   // <-- use readOnly, not enabled
                         maxLines = 4
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -89,11 +89,9 @@ fun ChatScreen(
                                 inputText = ""
                                 viewModel.sendMessage(msg)
                             }
-                        },
-                        enabled = isModelLoaded && !isGenerating && inputText.isNotBlank()
-                    ) {
-                        Icon(Icons.Default.Send, "Send")
-                    }
+                        }
+                        // The button itself can be enabled/disabled
+                    )
                 }
             }
         }

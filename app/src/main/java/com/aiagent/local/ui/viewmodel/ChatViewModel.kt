@@ -11,8 +11,10 @@ import com.aiagent.local.inference.LlamaEngine
 import com.aiagent.local.inference.ModelManager
 import com.aiagent.local.tools.ToolExecutor
 import com.aiagent.local.tools.ToolRegistry
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -101,21 +103,20 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             _isGenerating.value = true
-            val botMessage = ChatMessage.Bot("", isStreaming = true)
-            _messages.value = _messages.value + botMessage
-
             try {
                 val prompt = buildPrompt(content)
-                var fullResponse = ""
 
-                llamaEngine.generateStream(
-                    prompt = prompt,
-                    temperature = currentSettings.temperature,
-                    maxTokens = currentSettings.maxTokens
-                ).collect { token ->
-                    fullResponse += token
-                    updateLastBotMessage(fullResponse, isStreaming = true)
+                // Blocking call on IO dispatcher
+                val fullResponse = withContext(Dispatchers.IO) {
+                    llamaEngine.complete(
+                        prompt = prompt,
+                        temperature = currentSettings.temperature,
+                        maxTokens = currentSettings.maxTokens
+                    )
                 }
+
+                // Add the bot message with the full response
+                _messages.value = _messages.value + ChatMessage.Bot(fullResponse)
 
                 // Check for tool call
                 val toolCallMatch = Regex(
@@ -140,8 +141,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         sendMessage("Tool result for ${toolCall.tool}: ${result.result}")
                     }
                 }
-
-                updateLastBotMessage(fullResponse, isStreaming = false)
             } catch (e: Exception) {
                 _messages.value = _messages.value + ChatMessage.System(
                     "Generation error: ${e.message}"
@@ -167,16 +166,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             append("<|user|>\n")
             append(userMessage)
             append("\n<|end|>\n<|assistant|>")
-        }
-    }
-
-    private fun updateLastBotMessage(content: String, isStreaming: Boolean) {
-        val list = _messages.value.toMutableList()
-        val lastIndex = list.indexOfLast { it is ChatMessage.Bot }
-        if (lastIndex >= 0) {
-            val botMsg = list[lastIndex] as ChatMessage.Bot
-            list[lastIndex] = botMsg.copy(content = content, isStreaming = isStreaming)
-            _messages.value = list
         }
     }
 
