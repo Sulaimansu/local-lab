@@ -65,7 +65,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
     // llama.cpp (GGUF inference)
-    implementation("de.kherud:llama:4.3.0")
+    implementation("de.kherud:llama:1.2.1")
 
     // Navigation
     implementation("androidx.navigation:navigation-compose:2.8.4")
