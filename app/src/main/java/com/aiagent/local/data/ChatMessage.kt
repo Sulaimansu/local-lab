@@ -15,7 +15,7 @@ sealed class ChatMessage {
         val isStreaming: Boolean = false
     ) : ChatMessage()
 
-    data class SystemMessage(
+    data class SystemAlert(
         override val content: String,
         override val timestamp: Long = java.lang.System.currentTimeMillis()
     ) : ChatMessage()
@@ -34,8 +34,11 @@ sealed class ChatMessage {
             }
     }
 
-    // Keep backward compatibility (the UI uses ChatMessage.System)
+    // Keep existing code using ChatMessage.System working
     companion object {
-        typealias System = SystemMessage
+        // Typealias inside companion – ChatMessage.System refers to SystemAlert
+        // We also provide a factory function for convenience
+        fun System(content: String, timestamp: Long = java.lang.System.currentTimeMillis()) =
+            SystemAlert(content, timestamp)
     }
 }

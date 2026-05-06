@@ -16,7 +16,7 @@ data class ToolCallResult(
     val result: String
 )
 
-// Enum for token types (must be outside any function)
+// Enum outside any function
 enum class TokenType { NUMBER, OPERATOR, LPAREN, RPAREN, EOF }
 
 object ToolImplementations {

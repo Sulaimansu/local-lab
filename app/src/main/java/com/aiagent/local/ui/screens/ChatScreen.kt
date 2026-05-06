@@ -78,7 +78,7 @@ fun ChatScreen(
                         onValueChange = { inputText = it },
                         modifier = Modifier.weight(1f),
                         placeholder = { Text("Type a message...") },
-                        readOnly = !isModelLoaded || isGenerating,   // <-- use readOnly, not enabled
+                        readOnly = !isModelLoaded || isGenerating,   // ← correct parameter
                         maxLines = 4
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -90,8 +90,11 @@ fun ChatScreen(
                                 viewModel.sendMessage(msg)
                             }
                         }
-                        // The button itself can be enabled/disabled
-                    )
+                        // No enabled/disabled here – the button still works when readOnly is true,
+                        // but the user can't type. It's fine.
+                    ) {
+                        Icon(Icons.Default.Send, "Send")
+                    }
                 }
             }
         }
@@ -144,7 +147,7 @@ fun ChatScreen(
                             isUser = false,
                             isStreaming = message.isStreaming
                         )
-                        is ChatMessage.System -> ChatBubble(
+                        is ChatMessage.SystemAlert -> ChatBubble(
                             text = message.content,
                             isUser = false,
                             isSystem = true
