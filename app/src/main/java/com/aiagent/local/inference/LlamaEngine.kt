@@ -1,126 +1,107 @@
 package com.aiagent.local.inference
 
-import android.util.Log
-import de.kherud.llama.InferenceParameters
-import de.kherud.llama.LlamaModel
-import de.kherud.llama.ModelParameters
+import android.content.Context
+import androidx.lifecycle.lifecycleScope
+import io.aatricks.llmedge.LLMEdge
+import io.aatricks.llmedge.model.ModelSpec
+import io.aatricks.llmedge.text.TextGenerationRequest
+import io.aatricks.llmedge.text.TextStreamEvent
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.launch
 
 /**
- * Wraps de.kherud:llama (llama.cpp) for streaming GGUF inference.
- * Uses LlamaModel.generate() which returns an Iterable<LlamaOutput>.
+ * Wraps llmedge (io.github.aatricks:llmedge) for GGUF inference on Android.
+ * Uses the LLMEdge facade which bundles llama.cpp native .so files.
  */
-class LlamaEngine {
+class LlamaEngine(private val context: Context, private val appScope: CoroutineScope) {
 
-    private var model: LlamaModel? = null
-    private var modelPath: String = ""
+    private var edge: LLMEdge? = null
     private var isLoaded = false
+    private var modelSpec: ModelSpec? = null
 
     /**
-     * Load a GGUF model from absolute file path.
-     * Only one model can be loaded at a time; previous is closed.
+     * Initialize the LLMEdge facade. Call once from a coroutine scope.
      */
-    fun loadModel(
-        path: String,
-        gpuLayers: Int = 20,
-        contextSize: Int = 2048
-    ): Result<Unit> {
+    fun initialize(): Result<Unit> {
         return try {
-            // Close previous model if any
-            close()
-
-            Log.d("LlamaEngine", "Loading model from: $path")
-
-            val params = ModelParameters()
-                .setModel(path)
-                .setNGpuLayers(gpuLayers)
-                .setCtxSize(contextSize)
-
-            model = LlamaModel(params)
-            modelPath = path
-            isLoaded = true
-            Log.d("LlamaEngine", "Model loaded successfully")
+            edge = LLMEdge.create(
+                context = context.applicationContext,
+                scope = appScope
+            )
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e("LlamaEngine", "Failed to load model", e)
             Result.failure(e)
         }
     }
 
     /**
-     * Stream inference tokens via Kotlin Flow.
-     * LlamaModel.generate() is synchronous, so we wrap in flowOn(IO).
+     * Load a GGUF model from absolute file path.
+     * ModelSpec.localFile() tells llmedge to load from device storage.
+     */
+    fun loadModel(path: String): Result<Unit> {
+        return try {
+            modelSpec = ModelSpec.localFile(path)
+            isLoaded = true
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Stream tokens using llmedge's edge.text.stream().
      */
     fun generateStream(
         prompt: String,
         temperature: Float = 0.7f,
         topP: Float = 0.9f,
-        topK: Int = 40,
         maxTokens: Int = 512,
-        repeatPenalty: Float = 1.1f,
-        stopStrings: List<String> = listOf("</s>", "<|im_end|>", "[INST]"),
-        grammar: String? = null
     ): Flow<String> = flow {
-        val currentModel = model ?: throw IllegalStateException("Model not loaded")
-        val currentPath = modelPath
+        val currentEdge = edge ?: throw IllegalStateException("LLMEdge not initialized")
+        val spec = modelSpec ?: throw IllegalStateException("Model not loaded")
 
-        val params = InferenceParameters(prompt)
-            .setTemperature(temperature)
-            .setTopP(topP)
-            .setTopK(topK)
-            .setNPredict(maxTokens)
-            .setRepeatPenalty(repeatPenalty)
-            .setStopStrings(stopStrings)
+        // Create a text generation request for streaming.
+        // llmedge handles the native llama.cpp context internally.
+        val request = TextGenerationRequest(
+            prompt = prompt,
+            model = spec,
+            maxTokens = maxTokens,
+        )
 
-        if (grammar != null) {
-            params.setGrammar(grammar)
-        }
-
-        val generator = try {
-            currentModel.generate(params)
-        } catch (e: Exception) {
-            Log.e("LlamaEngine", "Generate failed", e)
-            throw e
-        }
-
-        try {
-            for (output in generator) {
-                emit(output.toString())
+        // Stream events: each TextStreamEvent contains a token fragment
+        currentEdge.text.stream(request).collect { event ->
+            when (event) {
+                is TextStreamEvent.Token -> emit(event.text)
+                is TextStreamEvent.Error -> throw RuntimeException(event.message)
+                else -> {} // ignore other events like Start, End
             }
-        } catch (e: Exception) {
-            Log.e("LlamaEngine", "Stream error", e)
-            throw e
         }
     }.flowOn(Dispatchers.IO)
 
     /**
-     * Blocking completion (non-streaming).
+     * Blocking (non-streaming) completion.
      */
-    fun complete(
+    suspend fun complete(
         prompt: String,
         temperature: Float = 0.7f,
         topP: Float = 0.9f,
-        topK: Int = 40,
         maxTokens: Int = 512,
-        grammar: String? = null
     ): Result<String> {
         return try {
-            val currentModel = model ?: throw IllegalStateException("Model not loaded")
+            val currentEdge = edge ?: throw IllegalStateException("LLMEdge not initialized")
+            val spec = modelSpec ?: throw IllegalStateException("Model not loaded")
 
-            val params = InferenceParameters(prompt)
-                .setTemperature(temperature)
-                .setTopP(topP)
-                .setTopK(topK)
-                .setNPredict(maxTokens)
+            val request = TextGenerationRequest(
+                prompt = prompt,
+                model = spec,
+                maxTokens = maxTokens,
+            )
 
-            if (grammar != null) {
-                params.setGrammar(grammar)
-            }
-
-            val result = currentModel.complete(params)
+            val result = currentEdge.text.generate(request)
             Result.success(result)
         } catch (e: Exception) {
             Result.failure(e)
@@ -128,29 +109,29 @@ class LlamaEngine {
     }
 
     /**
-     * Generate text embeddings. Requires model loaded with embedding=true
-     * (use a dedicated embedding GGUF like all-MiniLM-L6-v2).
+     * Embed text using llmedge's built-in RAG pipeline.
+     * llmedge uses ONNX all-MiniLM-L6-v2 embeddings (not GGUF).
+     * Returns the raw embedding as a FloatArray.
      */
     fun embed(text: String): Result<FloatArray> {
         return try {
-            val currentModel = model ?: throw IllegalStateException("Model not loaded")
-            val embedding = currentModel.embed(text)
+            val currentEdge = edge ?: throw IllegalStateException("LLMEdge not initialized")
+            val session = currentEdge.rag.createSession()
+            session.init()
+
+            // Index the text (creates embedding internally)
+            val embedding = session.embed(text)
             Result.success(embedding)
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    fun isModelLoaded(): Boolean = isLoaded && model != null
+    fun isModelLoaded(): Boolean = isLoaded && edge != null
 
     fun close() {
-        try {
-            model?.close()
-        } catch (e: Exception) {
-            Log.w("LlamaEngine", "Error closing model", e)
-        }
-        model = null
+        edge = null
+        modelSpec = null
         isLoaded = false
-        modelPath = ""
     }
 }

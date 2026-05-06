@@ -20,7 +20,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private val settingsRepo = SettingsRepository(application)
     private val modelManager = ModelManager(application)
-    private val llamaEngine = LlamaEngine()
+    private val llamaEngine = LlamaEngine(application, viewModelScope)
     private val toolRegistry = ToolRegistry()
     private val toolExecutor = ToolExecutor(application)
     private val retriever = Retriever(application)

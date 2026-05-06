@@ -11,7 +11,7 @@ android {
 
     defaultConfig {
         applicationId = "com.aiagent.local"
-        minSdk = 26
+        minSdk = 30
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
@@ -64,8 +64,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
-    // llama.cpp (GGUF inference)
-    implementation("com.github.kherud:llama:1.2.1")
+    // llmedge - llama.cpp AAR with native .so for arm64-v8a (Maven Central)
+    implementation("io.github.aatricks:llmedge:0.3.9")
 
     // Navigation
     implementation("androidx.navigation:navigation-compose:2.8.4")
@@ -73,9 +73,7 @@ dependencies {
     // DataStore (preferences)
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 
-    // Room (for RAG vector storage fallback)
-    implementation("androidx.room:room-runtime:2.6.1")
-    annotationProcessor("androidx.room:room-compiler:2.6.1")
+    // SQLite (already used by VectorDatabase, no Room needed)
 }
 
 configurations.all {
