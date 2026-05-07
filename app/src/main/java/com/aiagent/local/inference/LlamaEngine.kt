@@ -6,6 +6,7 @@ import io.aatricks.llmedge.LLMEdge
 import io.aatricks.llmedge.model.ModelSpec
 import io.aatricks.llmedge.text.TextGenerationRequest
 import io.aatricks.llmedge.text.TextModelOptions
+import io.aatricks.llmedge.text.runtime.SmolLM
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
@@ -85,18 +86,20 @@ class LlamaEngine(private val context: Context, private val appScope: CoroutineS
 
     /**
      * Blocking full-response generation with all inference parameters
+     * Note: topP, topK, repeatPenalty are NOT used in llmedge 0.3.9 (not supported)
      */
     suspend fun complete(
         prompt: String,
         temperature: Float = 0.7f,
         maxTokens: Int = 512,
-        topP: Float = 0.9f,
-        topK: Int = 40,
-        repeatPenalty: Float = 1.1f
+        topP: Float = 0.9f, // Ignored in llmedge 0.3.9
+        topK: Int = 40,     // Ignored in llmedge 0.3.9
+        repeatPenalty: Float = 1.1f // Ignored in llmedge 0.3.9
     ): String = withContext(Dispatchers.IO) {
         Log.d(TAG, "Starting text generation...")
-        Log.d(TAG, "Parameters: temperature=$temperature, maxTokens=$maxTokens, topP=$topP, topK=$topK, repeatPenalty=$repeatPenalty")
-        Log.d(TAG, "Model config: contextSize=$currentContextSize, threads=$currentThreads, gpuLayers=$currentGpuLayers")
+        Log.d(TAG, "Parameters: temperature=$temperature, maxTokens=$maxTokens")
+        Log.d(TAG, "Note: topP/topK/repeatPenalty not supported in llmedge 0.3.9")
+        Log.d(TAG, "Model config: contextSize=$currentContextSize, threads=$currentThreads")
         
         val currentEdge = edge ?: throw IllegalStateException("Engine not initialized. Call initialize() first.")
         val spec = modelSpec ?: throw IllegalStateException("Model not loaded. Call loadModel() first.")
@@ -105,37 +108,35 @@ class LlamaEngine(private val context: Context, private val appScope: CoroutineS
         ensureActive()
         
         try {
-            // Build TextModelOptions with ALL inference parameters (llmedge 0.3.9 API)
-            // Critical: gpuLayers must be passed here via useVulkan flag and actual layer count
+            // Build TextModelOptions with EXACT llmedge 0.3.9 API
+            // Parameters: contextSize, chatTemplate, numThreads, generationThreads, minP, temperature,
+            //             useMmap, useMlock, useFlashAttention, thinkingMode, reasoningBudget, useVulkan
+            // 
+            // CRITICAL: thinkingMode is NOT nullable - must be SmolLM.ThinkingMode.DEFAULT or DISABLED
+            // NOTE: topP, topK, repeatPenalty, gpuLayers are NOT supported in llmedge 0.3.9
             val options = TextModelOptions(
                 contextSize = currentContextSize.toLong(),
                 chatTemplate = null,
                 numThreads = currentThreads,
-                generationThreads = null,
+                generationThreads = 1,
                 minP = 0.05f,
                 temperature = temperature,
-                topP = topP,
-                topK = topK,
-                repeatPenalty = repeatPenalty,
                 useMmap = true,
                 useMlock = false,
                 useFlashAttention = false,
-                thinkingMode = null,
+                thinkingMode = SmolLM.ThinkingMode.DEFAULT,
                 reasoningBudget = null,
-                useVulkan = currentGpuLayers > 0,
-                gpuLayers = currentGpuLayers
+                useVulkan = false
             )
             
             Log.d(TAG, "TextModelOptions created:")
-            Log.d(TAG, "  - temperature=${options.temperature}")
             Log.d(TAG, "  - contextSize=${options.contextSize}")
             Log.d(TAG, "  - threads=${options.numThreads}")
-            Log.d(TAG, "  - topP=${options.topP}")
-            Log.d(TAG, "  - topK=${options.topK}")
-            Log.d(TAG, "  - repeatPenalty=${options.repeatPenalty}")
-            Log.d(TAG, "  - gpuLayers=$currentGpuLayers (useVulkan=${options.useVulkan})")
+            Log.d(TAG, "  - temperature=${options.temperature}")
+            Log.d(TAG, "  - minP=${options.minP}")
+            Log.d(TAG, "  - thinkingMode=${options.thinkingMode}")
             
-            // Build TextGenerationRequest (data class, no Builder in 0.3.9)
+            // Build TextGenerationRequest
             val request = TextGenerationRequest(
                 prompt = prompt,
                 model = spec,
@@ -145,19 +146,18 @@ class LlamaEngine(private val context: Context, private val appScope: CoroutineS
                 batchSize = 1
             )
             
-            Log.d(TAG, "TextGenerationRequest built successfully, calling generate...")
-            Log.d(TAG, "Request prompt length: ${prompt.length} chars")
-            Log.d(TAG, "Request maxTokens: $maxTokens")
+            Log.d(TAG, "TextGenerationRequest built, calling generate...")
+            Log.d(TAG, "Prompt length: ${prompt.length}, maxTokens: $maxTokens")
             
-            // Check for cancellation again
+            // Check for cancellation
             ensureActive()
             
-            // Use the TextClient.generate method
+            // Execute generation
             val response = currentEdge.text.generate(request)
             
-            Log.i(TAG, "Generation completed successfully!")
-            Log.d(TAG, "Response length: ${response.length} chars")
-            Log.d(TAG, "Response preview: ${response.take(200)}...")
+            Log.i(TAG, "Generation completed!")
+            Log.d(TAG, "Response length: ${response.length}")
+            Log.d(TAG, "Preview: ${response.take(200)}...")
             
             response
         } catch (e: Exception) {

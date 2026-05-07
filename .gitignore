@@ -4,22 +4,25 @@
 *.o
 *.obj
 *.out
-build/
-target/
+*.dll
+*.so
+*.a
+*.pyc
+__pycache__/
 
 # Dependencies
-.gradle/
-.mypy_cache/
-.pytest_cache/
-__pycache__/
-coverage/
-htmlcov/
-*.egg-info/
-
-# Environment
+node_modules/
+venv/
+.venv/
 .env
 .env.local
 *.env.*
+
+# Build directories
+dist/
+build/
+target/
+.gradle/
 
 # Editors
 .vscode/
@@ -30,6 +33,15 @@ htmlcov/
 
 # Logs
 *.log
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# Python caches
+.mypy_cache/
+.pytest_cache/
 
 # System files
 .DS_Store

@@ -83,6 +83,10 @@ class SettingsRepository(private val context: Context) {
         context.dataStore.edit { it[KEY_MAX_TOKENS] = maxTokens }
     }
 
+    suspend fun updateRepeatPenalty(penalty: Float) {
+        context.dataStore.edit { it[KEY_REPEAT_PENALTY] = penalty }
+    }
+
     suspend fun updateGpuLayers(layers: Int) {
         context.dataStore.edit { it[KEY_GPU_LAYERS] = layers }
     }
