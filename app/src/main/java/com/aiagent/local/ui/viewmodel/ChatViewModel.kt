@@ -11,10 +11,8 @@ import com.aiagent.local.inference.LlamaEngine
 import com.aiagent.local.inference.ModelManager
 import com.aiagent.local.tools.ToolExecutor
 import com.aiagent.local.tools.ToolRegistry
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -37,6 +35,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val statusText: StateFlow<String> = _statusText.asStateFlow()
 
     private var currentSettings: InferenceSettings = InferenceSettings()
+    private var generationJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -101,22 +100,32 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         _messages.value = _messages.value + ChatMessage.User(content)
 
-        viewModelScope.launch {
+        // Cancel any previous generation
+        generationJob?.cancel()
+
+        generationJob = viewModelScope.launch(Dispatchers.Main) {
             _isGenerating.value = true
+            val responseBuilder = StringBuilder()
+            val botMessage = ChatMessage.Bot("Thinking…", isStreaming = true)
+            _messages.value = _messages.value + botMessage
+
             try {
                 val prompt = buildPrompt(content)
 
-                // Blocking call on IO dispatcher
-                val fullResponse = withContext(Dispatchers.IO) {
-                    llamaEngine.complete(
-                        prompt = prompt,
-                        temperature = currentSettings.temperature,
-                        maxTokens = currentSettings.maxTokens
-                    )
+                // Stream tokens and update the last bot message
+                llamaEngine.generateStream(
+                    prompt = prompt,
+                    temperature = currentSettings.temperature,
+                    maxTokens = currentSettings.maxTokens
+                ).catch { e ->
+                    responseBuilder.append("\n\n[Error: ${e.message}]")
+                }.collect { token ->
+                    responseBuilder.append(token)
+                    updateLastBotMessage(responseBuilder.toString(), isStreaming = true)
                 }
 
-                // Add the bot message with the full response
-                _messages.value = _messages.value + ChatMessage.Bot(fullResponse)
+                val fullResponse = responseBuilder.toString()
+                updateLastBotMessage(fullResponse, isStreaming = false)
 
                 // Check for tool call
                 val toolCallMatch = Regex(
@@ -137,18 +146,24 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         _messages.value = _messages.value + ChatMessage.System(
                             "Tool result: ${result.result}"
                         )
-                        // Continue conversation with tool result
                         sendMessage("Tool result for ${toolCall.tool}: ${result.result}")
                     }
                 }
+            } catch (e: CancellationException) {
+                // User pressed stop
+                responseBuilder.append("\n\n[Stopped]")
+                updateLastBotMessage(responseBuilder.toString(), isStreaming = false)
             } catch (e: Exception) {
-                _messages.value = _messages.value + ChatMessage.System(
-                    "Generation error: ${e.message}"
-                )
+                responseBuilder.append("\n\n[Error: ${e.message}]")
+                updateLastBotMessage(responseBuilder.toString(), isStreaming = false)
             } finally {
                 _isGenerating.value = false
             }
         }
+    }
+
+    fun stopGeneration() {
+        generationJob?.cancel()
     }
 
     private suspend fun buildPrompt(userMessage: String): String {
@@ -156,6 +171,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             "  - ${tool.name}: ${tool.description} " +
                     tool.parameters.entries.joinToString(", ") { "${it.key}: ${it.value}" }
         }
+        // Generic chat template that works for Llama 3, Mistral, Phi, etc.
         return buildString {
             append("<|system|>\n")
             append(currentSettings.systemPrompt)
@@ -165,7 +181,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             append("<|end|>\n")
             append("<|user|>\n")
             append(userMessage)
-            append("\n<|end|>\n<|assistant|>")
+            append("\n<|end|>\n<|assistant|>\n")
+        }
+    }
+
+    private fun updateLastBotMessage(content: String, isStreaming: Boolean) {
+        val list = _messages.value.toMutableList()
+        val lastIndex = list.indexOfLast { it is ChatMessage.Bot }
+        if (lastIndex >= 0) {
+            val botMsg = list[lastIndex] as ChatMessage.Bot
+            list[lastIndex] = botMsg.copy(content = content, isStreaming = isStreaming)
+            _messages.value = list
         }
     }
 

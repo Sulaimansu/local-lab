@@ -78,22 +78,30 @@ fun ChatScreen(
                         onValueChange = { inputText = it },
                         modifier = Modifier.weight(1f),
                         placeholder = { Text("Type a message...") },
-                        readOnly = !isModelLoaded || isGenerating,   // ← correct parameter
+                        readOnly = !isModelLoaded,
                         maxLines = 4
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    FloatingActionButton(
-                        onClick = {
-                            if (inputText.isNotBlank()) {
-                                val msg = inputText
-                                inputText = ""
-                                viewModel.sendMessage(msg)
-                            }
+                    if (isGenerating) {
+                        // Stop button
+                        FloatingActionButton(
+                            onClick = { viewModel.stopGeneration() },
+                            containerColor = MaterialTheme.colorScheme.error
+                        ) {
+                            Icon(Icons.Default.Close, "Stop")
                         }
-                        // No enabled/disabled here – the button still works when readOnly is true,
-                        // but the user can't type. It's fine.
-                    ) {
-                        Icon(Icons.Default.Send, "Send")
+                    } else {
+                        FloatingActionButton(
+                            onClick = {
+                                if (inputText.isNotBlank()) {
+                                    val msg = inputText
+                                    inputText = ""
+                                    viewModel.sendMessage(msg)
+                                }
+                            }
+                        ) {
+                            Icon(Icons.Default.Send, "Send")
+                        }
                     }
                 }
             }
