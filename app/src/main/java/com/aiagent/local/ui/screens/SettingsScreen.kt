@@ -9,7 +9,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.aiagent.local.data.InferenceSettings
 import com.aiagent.local.ui.viewmodel.SettingsViewModel
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -17,6 +19,9 @@ fun SettingsScreen(
     viewModel: SettingsViewModel,
     onBack: () -> Unit
 ) {
+    val scope = rememberCoroutineScope()
+    val settings by viewModel.settings.collectAsState(initial = InferenceSettings())
+    
     Scaffold(
         topBar = {
             TopAppBar(
@@ -39,70 +44,76 @@ fun SettingsScreen(
         ) {
             Text("Inference Parameters", style = MaterialTheme.typography.titleMedium)
 
-            var temperature by remember { mutableFloatStateOf(0.7f) }
-            var topP by remember { mutableFloatStateOf(0.9f) }
-            var topK by remember { mutableIntStateOf(40) }
-            var maxTokens by remember { mutableIntStateOf(512) }
-            var repeatPenalty by remember { mutableFloatStateOf(1.1f) }
-            var gpuLayers by remember { mutableIntStateOf(20) }
-            var contextSize by remember { mutableIntStateOf(2048) }
-
             // Temperature
-            Text("Temperature: $temperature")
+            Text("Temperature: ${settings.temperature}")
             Slider(
-                value = temperature,
-                onValueChange = { temperature = it },
+                value = settings.temperature,
+                onValueChange = { 
+                    scope.launch { viewModel.saveTemperature(it) } 
+                },
                 valueRange = 0f..2f
             )
 
             // Top-P
-            Text("Top-P: $topP")
+            Text("Top-P: ${settings.topP}")
             Slider(
-                value = topP,
-                onValueChange = { topP = it },
+                value = settings.topP,
+                onValueChange = { 
+                    scope.launch { viewModel.saveTopP(it) } 
+                },
                 valueRange = 0f..1f
             )
 
             // Top-K
-            Text("Top-K: $topK")
+            Text("Top-K: ${settings.topK}")
             Slider(
-                value = topK.toFloat(),
-                onValueChange = { topK = it.toInt() },
+                value = settings.topK.toFloat(),
+                onValueChange = { 
+                    scope.launch { viewModel.saveTopK(it.toInt()) } 
+                },
                 valueRange = 1f..100f,
                 steps = 98
             )
 
             // Max Tokens
-            Text("Max Tokens: $maxTokens")
+            Text("Max Tokens: ${settings.maxTokens}")
             Slider(
-                value = maxTokens.toFloat(),
-                onValueChange = { maxTokens = it.toInt() },
+                value = settings.maxTokens.toFloat(),
+                onValueChange = { 
+                    scope.launch { viewModel.saveMaxTokens(it.toInt()) } 
+                },
                 valueRange = 64f..2048f,
                 steps = 30
             )
 
             // Repeat Penalty
-            Text("Repeat Penalty: $repeatPenalty")
+            Text("Repeat Penalty: ${settings.repeatPenalty}")
             Slider(
-                value = repeatPenalty,
-                onValueChange = { repeatPenalty = it },
+                value = settings.repeatPenalty,
+                onValueChange = { 
+                    scope.launch { viewModel.saveRepeatPenalty(it) } 
+                },
                 valueRange = 1f..2f
             )
 
             // GPU Layers
-            Text("GPU Layers: $gpuLayers")
+            Text("GPU Layers: ${settings.gpuLayers}")
             Slider(
-                value = gpuLayers.toFloat(),
-                onValueChange = { gpuLayers = it.toInt() },
+                value = settings.gpuLayers.toFloat(),
+                onValueChange = { 
+                    scope.launch { viewModel.saveGpuLayers(it.toInt()) } 
+                },
                 valueRange = 0f..99f,
                 steps = 98
             )
 
             // Context Size
-            Text("Context Size: $contextSize")
+            Text("Context Size: ${settings.contextSize}")
             Slider(
-                value = contextSize.toFloat(),
-                onValueChange = { contextSize = it.toInt() },
+                value = settings.contextSize.toFloat(),
+                onValueChange = { 
+                    scope.launch { viewModel.saveContextSize(it.toInt()) } 
+                },
                 valueRange = 256f..4096f,
                 steps = 29
             )

@@ -2,6 +2,7 @@ package com.aiagent.local.ui.viewmodel
 
 import android.app.Application
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.aiagent.local.data.ChatMessage
@@ -74,17 +75,28 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 _statusText.value = "Copying model file..."
+                Log.i("ChatViewModel", "Loading model from URI: $uri")
                 val path = modelManager.resolveModelPath(uri)
+                Log.i("ChatViewModel", "Model resolved to path: $path")
 
-                _statusText.value = "Loading GGUF model..."
-                llamaEngine.loadModel(path)
+                _statusText.value = "Loading GGUF model with settings..."
+                Log.i("ChatViewModel", "Current settings: gpuLayers=${currentSettings.gpuLayers}, contextSize=${currentSettings.contextSize}, temp=${currentSettings.temperature}")
+                
+                llamaEngine.loadModel(
+                    path = path,
+                    gpuLayers = currentSettings.gpuLayers,
+                    contextSize = currentSettings.contextSize,
+                    threads = 4 // Default threads
+                )
                 _isModelLoaded.value = true
-                _statusText.value = "Model loaded!"
+                _statusText.value = "Model loaded successfully!"
+                Log.i("ChatViewModel", "Model loaded successfully!")
                 _messages.value = _messages.value + ChatMessage.System(
                     "Model loaded from: ${uri.lastPathSegment ?: path}"
                 )
             } catch (e: Exception) {
-                _statusText.value = "Error: ${e.message}"
+                Log.e("ChatViewModel", "Error loading model", e)
+                _statusText.value = "Error loading model: ${e.message}"
                 _messages.value = _messages.value + ChatMessage.System("Error: ${e.message}")
             }
         }
@@ -116,7 +128,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     llamaEngine.complete(
                         prompt = prompt,
                         temperature = currentSettings.temperature,
-                        maxTokens = currentSettings.maxTokens
+                        maxTokens = currentSettings.maxTokens,
+                        topP = currentSettings.topP,
+                        topK = currentSettings.topK,
+                        repeatPenalty = currentSettings.repeatPenalty
                     )
                 }
 
@@ -141,7 +156,25 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         _messages.value = _messages.value + ChatMessage.System(
                             "Tool result: ${result.result}"
                         )
-                        sendMessage("Tool result for ${toolCall.tool}: ${result.result}")
+                        // Use direct prompt instead of recursive sendMessage to avoid race conditions
+                        viewModelScope.launch {
+                            val followUpPrompt = "Tool result for ${toolCall.tool}: ${result.result}. Please continue your response."
+                            try {
+                                val toolResponse = withContext(Dispatchers.IO) {
+                                    llamaEngine.complete(
+                                        prompt = followUpPrompt,
+                                        temperature = currentSettings.temperature,
+                                        maxTokens = currentSettings.maxTokens,
+                                        topP = currentSettings.topP,
+                                        topK = currentSettings.topK,
+                                        repeatPenalty = currentSettings.repeatPenalty
+                                    )
+                                }
+                                updateLastBotMessage(response + "\n\n[Tool Result]: $toolResponse", isStreaming = false)
+                            } catch (e: Exception) {
+                                Log.e("ChatViewModel", "Follow-up generation failed", e)
+                            }
+                        }
                     }
                 }
             } catch (e: CancellationException) {
