@@ -4,10 +4,8 @@ import android.content.Context
 import io.aatricks.llmedge.LLMEdge
 import io.aatricks.llmedge.model.ModelSpec
 import io.aatricks.llmedge.text.TextGenerationRequest
-import io.aatricks.llmedge.text.TextStreamEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.withContext
 
 class LlamaEngine(private val context: Context, private val appScope: CoroutineScope) {
@@ -26,13 +24,13 @@ class LlamaEngine(private val context: Context, private val appScope: CoroutineS
     }
 
     /**
-     * Streaming generation – tokens arrive one by one.
+     * Blocking full-response generation – safe & works.
      */
-    fun generateStream(
+    suspend fun complete(
         prompt: String,
         temperature: Float = 0.7f,
         maxTokens: Int = 512
-    ): Flow<String> = flow {
+    ): String = withContext(Dispatchers.IO) {
         val currentEdge = edge ?: throw IllegalStateException("Engine not initialized")
         val spec = modelSpec ?: throw IllegalStateException("Model not loaded")
 
@@ -42,14 +40,8 @@ class LlamaEngine(private val context: Context, private val appScope: CoroutineS
             maxTokens = maxTokens,
         )
 
-        currentEdge.text.stream(request).collect { event ->
-            when (event) {
-                is TextStreamEvent.Token -> emit(event.text)
-                is TextStreamEvent.Error -> throw RuntimeException(event.message)
-                else -> {}
-            }
-        }
-    }.flowOn(Dispatchers.IO)
+        currentEdge.text.generate(request)
+    }
 
     fun isModelLoaded() = modelSpec != null
 

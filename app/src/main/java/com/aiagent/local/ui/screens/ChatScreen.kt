@@ -83,7 +83,6 @@ fun ChatScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     if (isGenerating) {
-                        // Stop button
                         FloatingActionButton(
                             onClick = { viewModel.stopGeneration() },
                             containerColor = MaterialTheme.colorScheme.error

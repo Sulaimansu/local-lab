@@ -100,38 +100,34 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         _messages.value = _messages.value + ChatMessage.User(content)
 
-        // Cancel any previous generation
+        // Cancel any running generation
         generationJob?.cancel()
 
         generationJob = viewModelScope.launch(Dispatchers.Main) {
             _isGenerating.value = true
-            val responseBuilder = StringBuilder()
-            val botMessage = ChatMessage.Bot("Thinking…", isStreaming = true)
-            _messages.value = _messages.value + botMessage
+            val placeholder = ChatMessage.Bot("Generating…", isStreaming = false)
+            _messages.value = _messages.value + placeholder
 
             try {
                 val prompt = buildPrompt(content)
 
-                // Stream tokens and update the last bot message
-                llamaEngine.generateStream(
-                    prompt = prompt,
-                    temperature = currentSettings.temperature,
-                    maxTokens = currentSettings.maxTokens
-                ).catch { e ->
-                    responseBuilder.append("\n\n[Error: ${e.message}]")
-                }.collect { token ->
-                    responseBuilder.append(token)
-                    updateLastBotMessage(responseBuilder.toString(), isStreaming = true)
+                // Run blocking call on IO, then update UI
+                val response = withContext(Dispatchers.IO) {
+                    llamaEngine.complete(
+                        prompt = prompt,
+                        temperature = currentSettings.temperature,
+                        maxTokens = currentSettings.maxTokens
+                    )
                 }
 
-                val fullResponse = responseBuilder.toString()
-                updateLastBotMessage(fullResponse, isStreaming = false)
+                // Replace placeholder with actual response
+                updateLastBotMessage(response, isStreaming = false)
 
                 // Check for tool call
                 val toolCallMatch = Regex(
                     "<tool_call>(.*?)</tool_call>",
                     RegexOption.DOT_MATCHES_ALL
-                ).find(fullResponse)
+                ).find(response)
 
                 if (toolCallMatch != null) {
                     val jsonStr = toolCallMatch.groupValues[1]
@@ -141,7 +137,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                             toolName = toolCall.tool,
                             arguments = toolCall.args
                         )
-
                         val result = toolExecutor.execute(toolCall)
                         _messages.value = _messages.value + ChatMessage.System(
                             "Tool result: ${result.result}"
@@ -150,12 +145,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
             } catch (e: CancellationException) {
-                // User pressed stop
-                responseBuilder.append("\n\n[Stopped]")
-                updateLastBotMessage(responseBuilder.toString(), isStreaming = false)
+                updateLastBotMessage("[Stopped]", isStreaming = false)
             } catch (e: Exception) {
-                responseBuilder.append("\n\n[Error: ${e.message}]")
-                updateLastBotMessage(responseBuilder.toString(), isStreaming = false)
+                updateLastBotMessage("[Error: ${e.message}]", isStreaming = false)
             } finally {
                 _isGenerating.value = false
             }
@@ -171,7 +163,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             "  - ${tool.name}: ${tool.description} " +
                     tool.parameters.entries.joinToString(", ") { "${it.key}: ${it.value}" }
         }
-        // Generic chat template that works for Llama 3, Mistral, Phi, etc.
+        // Generic template (Llama 3 style)
         return buildString {
             append("<|system|>\n")
             append(currentSettings.systemPrompt)
